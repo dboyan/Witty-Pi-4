@@ -116,6 +116,45 @@ if [ -z ${I2C_MC_ADDRESS+x} ]; then
 fi
 
 
+BACKUP_FILE="$my_dir/wittyPiBackup.txt"
+if [ ! -f "$BACKUP_FILE" ]; then
+    touch "$BACKUP_FILE"
+fi
+
+# Function to write a value to Witty Pi and the backup file
+write_and_backup() {
+    local register_address=$1
+    local value=$2
+    # Write the value to the Witty Pi using a placeholder function
+    i2c_write 0x01 $I2C_MC_ADDRESS $register_address $value
+    # Check if the register address already exists in the file
+    if grep -q "^${register_address}:" $BACKUP_FILE; then
+        # If the address exists, remove the line containing the old value
+        sed -i "/^${register_address}:/d" $BACKUP_FILE
+    fi
+    # Add the updated value to the backup file
+    echo "${register_address}:${value}" >> $BACKUP_FILE
+}
+
+# Function to read a value from Witty Pi and verify against the backup file
+read_and_verify() {
+    local register_address=$1
+    # Attempt to read the value from the Witty Pi
+    local read_value=$(i2c_read 0x01 $I2C_MC_ADDRESS $register_address)
+    # Retrieve the expected value from the backup file
+    local expected_value=$(grep "^${register_address}:" $BACKUP_FILE | cut -d':' -f2)
+    # Check if the read value matches the expected value
+    if [ -n "$expected_value" ] && [ "$read_value" != "$expected_value" ]; then
+        #echo "Mismatch detected for register $register_address. Expected: $expected_value, Read: $read_value"
+        # Optionally correct the value on the Witty Pi based on the backup
+        i2c_write 0x01 $I2C_MC_ADDRESS $register_address $expected_value
+        # Assume correction is successful, use expected_value for further operations
+        read_value=$expected_value
+    fi
+    # Return the verified or corrected value
+    echo $read_value
+}
+
 one_wire_confliction()
 {
   if [[ $HALT_PIN -eq 4 ]]; then
@@ -537,48 +576,42 @@ get_output_current()
   calc $(($i))+$(($d))/100
 }
 
-get_low_voltage_threshold()
-{
-  local lowVolt=$(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_LOW_VOLTAGE)
-  if [ $(($lowVolt)) == 255 ]; then
-    lowVolt='disabled'
-  else
-    lowVolt=$(calc $(($lowVolt))/10)
-    lowVolt+='V'
-  fi
-  echo $lowVolt;
+get_low_voltage_threshold() {
+    local lowVolt=$(read_and_verify $I2C_CONF_LOW_VOLTAGE)
+    if [ $(($lowVolt)) == 255 ]; then
+        echo 'disabled'
+    else
+        # Convert to volts if not disabled
+        local voltageValue=$(calc $(($lowVolt))/10)
+        echo "${voltageValue}V"
+    fi
 }
 
-get_recovery_voltage_threshold()
-{
-  local recVolt=$(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_RECOVERY_VOLTAGE)
-  if [ $(($recVolt)) == 255 ]; then
-    recVolt='disabled'
-  else
-    recVolt=$(calc $(($recVolt))/10)
-    recVolt+='V'
-  fi
-  echo $recVolt;
+get_recovery_voltage_threshold() {
+    local recVolt=$(read_and_verify $I2C_CONF_RECOVERY_VOLTAGE)
+    if [ $(($recVolt)) == 255 ]; then
+        echo 'disabled'
+    else
+        # Convert to volts if not disabled
+        local voltageValue=$(calc $(($recVolt))/10)
+        echo "${voltageValue}V"
+    fi
 }
 
-set_low_voltage_threshold()
-{
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_LOW_VOLTAGE $1
+set_low_voltage_threshold() {
+    write_and_backup $I2C_CONF_LOW_VOLTAGE $1
 }
 
-set_recovery_voltage_threshold()
-{
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_RECOVERY_VOLTAGE $1
+set_recovery_voltage_threshold() {
+    write_and_backup $I2C_CONF_RECOVERY_VOLTAGE $1
 }
 
-clear_low_voltage_threshold()
-{
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_LOW_VOLTAGE 0xFF
+clear_low_voltage_threshold() {
+    write_and_backup $I2C_CONF_LOW_VOLTAGE 0xFF
 }
 
-clear_recovery_voltage_threshold()
-{
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_RECOVERY_VOLTAGE 0xFF
+clear_recovery_voltage_threshold() {
+    write_and_backup $I2C_CONF_RECOVERY_VOLTAGE 0xFF
 }
 
 get_over_temperature_action()
