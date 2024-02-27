@@ -404,6 +404,7 @@ system_to_rtc()
   log '  Writing system time to RTC...'
   local current_rtc_ts=$(get_rtc_timestamp)
   local sys_ts=$(get_sys_timestamp)
+  # Write to rtc
   local sec=$(date -d @$sys_ts +%S)
   local min=$(date -d @$sys_ts +%M)
   local hour=$(date -d @$sys_ts +%H)
@@ -411,9 +412,28 @@ system_to_rtc()
   local date=$(date -d @$sys_ts +%d)
   local month=$(date -d @$sys_ts +%m)
   local year=$(date -d @$sys_ts +%y)
+  i2c_write 0x01 $I2C_MC_ADDRESS 58 $(dec2bcd $sec)
+  i2c_write 0x01 $I2C_MC_ADDRESS 59 $(dec2bcd $min)
+  i2c_write 0x01 $I2C_MC_ADDRESS 60 $(dec2bcd $hour)
+  i2c_write 0x01 $I2C_MC_ADDRESS 61 $(dec2bcd $date)
+  i2c_write 0x01 $I2C_MC_ADDRESS 62 $(dec2bcd $day)
+  i2c_write 0x01 $I2C_MC_ADDRESS 63 $(dec2bcd $month)
+  i2c_write 0x01 $I2C_MC_ADDRESS 64 $(dec2bcd $year)
   local diff=$((sys_ts - current_rtc_ts))
+  # Calculate the correct timestamp for next scheduled start up
   local start_str=$(get_startup_time)
-  local start_ts=$(date -d "$start_str" +%s)
+  local start_ts=$(date --date="$(date -d @$current_rtc_ts +%Y-%m)-$start_str" +%s)
+  local cur_rtc_month=$(date -d @$current_rtc_ts +"%m")
+  if [ $start_ts -lt $current_rtc_ts ]; then
+	  if [ $cur_rtc_month -eq 12 ]; then
+		  local new_year=$(($(date -d @$current_rtc_ts +"%Y") + 1))
+		  local new_month=1
+		  start_ts=$(date --date="$new_year-$new_month-$start_str" +%s)
+	  else
+		  local new_month=$((cur_rtc_month + 1))
+		  start_ts=$(date --date="$(date +%Y)-$new_month-$start_str" +%s)
+	  fi
+  fi
   local new_timestamp=$((start_ts + diff))
   # Convert the new timestamp back to the individual components
   local new_date=$(date -d @$new_timestamp +%d)
@@ -422,8 +442,19 @@ system_to_rtc()
   local new_sec=$(date -d @$new_timestamp +%S)
   # Call the set function with the new time
   set_startup_time $new_date $new_hour $new_min $new_sec
+  # Calculate the correct timestamp for next scheduled shutdown 
   local shut_str=$(get_shutdown_time)
-  local shut_ts=$(date -d "$shut_str" +%s)
+  local shut_ts=$(date --date="$(date -d @$current_rtc_ts +%Y-%m)-$shut_str" +%s)
+  if [ $shut_ts -lt $current_rtc_ts ]; then
+	  if [ $cur_rtc_month -eq 12 ]; then
+		  local new_year=$(($(date -d @$current_rtc_ts +"%Y") + 1))
+		  local new_month=1
+		  shut_ts=$(date --date="$new_year-$new_month-$shut_str" +%s)
+	  else
+		  local new_month=$((cur_rtc_month + 1))
+		  shut_ts=$(date --date="$(date +%Y)-$new_month-$shut_str" +%s)
+	  fi
+  fi
   local new_timestamp=$((shut_ts + diff))
   # Convert the new timestamp back to the individual components
   local new_date=$(date -d @$new_timestamp +%d)
@@ -432,13 +463,6 @@ system_to_rtc()
   local new_sec=$(date -d @$new_timestamp +%S)
   # Call the set function with the new time
   set_shutdown_time $new_date $new_hour $new_min $new_sec
-  i2c_write 0x01 $I2C_MC_ADDRESS 58 $(dec2bcd $sec)
-  i2c_write 0x01 $I2C_MC_ADDRESS 59 $(dec2bcd $min)
-  i2c_write 0x01 $I2C_MC_ADDRESS 60 $(dec2bcd $hour)
-  i2c_write 0x01 $I2C_MC_ADDRESS 61 $(dec2bcd $date)
-  i2c_write 0x01 $I2C_MC_ADDRESS 62 $(dec2bcd $day)
-  i2c_write 0x01 $I2C_MC_ADDRESS 63 $(dec2bcd $month)
-  i2c_write 0x01 $I2C_MC_ADDRESS 64 $(dec2bcd $year)
   TIME_UNKNOWN=2
   log '  Done :-)'
 }
