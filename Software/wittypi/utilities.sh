@@ -307,14 +307,31 @@ get_startup_time()
 
 set_startup_time()
 {
-  sec=$(dec2bcd $4)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_SECOND_ALARM1 $sec
-  min=$(dec2bcd $3)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_MINUTE_ALARM1 $min
-  hour=$(dec2bcd $2)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_HOUR_ALARM1 $hour
-  date=$(dec2bcd $1)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_DAY_ALARM1 $date
+  local retries=0
+  local success=0
+
+  while [ $retries -lt 4 ] && [ $success -eq 0 ]; do
+    # Convert decimal to BCD and write each component of the time
+    sec=$(dec2bcd $4)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_SECOND_ALARM1 $sec
+    min=$(dec2bcd $3)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_MINUTE_ALARM1 $min
+    hour=$(dec2bcd $2)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_HOUR_ALARM1 $hour
+    date=$(dec2bcd $1)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_DAY_ALARM1 $date
+    # Read back values to verify
+    local read_sec=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_SECOND_ALARM1))
+    local read_min=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_MINUTE_ALARM1))
+    local read_hour=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_HOUR_ALARM1))
+    local read_date=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_DAY_ALARM1))
+    # Check if read values match the intended values
+    if [ "$read_sec" -eq "$4" ] && [ "$read_min" -eq "$3" ] && [ "$read_hour" -eq "$2" ] && [ "$read_date" -eq "$1" ]; then
+      success=1
+    else
+      retries=$((retries+1))
+    fi
+  done
 }
 
 clear_startup_time()
@@ -336,14 +353,30 @@ get_shutdown_time()
 
 set_shutdown_time()
 {
-  sec=$(dec2bcd $4)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_SECOND_ALARM2 $sec
-  min=$(dec2bcd $3)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_MINUTE_ALARM2 $min
-  hour=$(dec2bcd $2)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_HOUR_ALARM2 $hour
-  date=$(dec2bcd $1)
-  i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_DAY_ALARM2 $date
+  local retries=0
+  local success=0
+
+  while [ $retries -lt 4 ] && [ $success -eq 0 ]; do
+    sec=$(dec2bcd $4)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_SECOND_ALARM2 $sec
+    min=$(dec2bcd $3)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_MINUTE_ALARM2 $min
+    hour=$(dec2bcd $2)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_HOUR_ALARM2 $hour
+    date=$(dec2bcd $1)
+    i2c_write 0x01 $I2C_MC_ADDRESS $I2C_CONF_DAY_ALARM2 $date
+    # Read back values to verify
+    local read_sec=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_SECOND_ALARM2))
+    local read_min=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_MINUTE_ALARM2))
+    local read_hour=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_HOUR_ALARM2))
+    local read_date=$(bcd2dec $(i2c_read 0x01 $I2C_MC_ADDRESS $I2C_CONF_DAY_ALARM2))
+    # Check if read values match the intended values
+    if [ "$read_sec" -eq "$4" ] && [ "$read_min" -eq "$3" ] && [ "$read_hour" -eq "$2" ] && [ "$read_date" -eq "$1" ]; then
+      success=1
+    else
+      retries=$((retries+1))
+    fi
+  done
 }
 
 clear_shutdown_time()
@@ -369,6 +402,7 @@ net_to_system()
 system_to_rtc()
 {
   log '  Writing system time to RTC...'
+  local current_rtc_ts=$(get_rtc_timestamp)
   local sys_ts=$(get_sys_timestamp)
   local sec=$(date -d @$sys_ts +%S)
   local min=$(date -d @$sys_ts +%M)
@@ -377,6 +411,27 @@ system_to_rtc()
   local date=$(date -d @$sys_ts +%d)
   local month=$(date -d @$sys_ts +%m)
   local year=$(date -d @$sys_ts +%y)
+  local diff=$((sys_ts - current_rtc_ts))
+  local start_str=$(get_startup_time)
+  local start_ts=$(date -d "$start_str" +%s)
+  local new_timestamp=$((start_ts + diff))
+  # Convert the new timestamp back to the individual components
+  local new_date=$(date -d @$new_timestamp +%d)
+  local new_hour=$(date -d @$new_timestamp +%H)
+  local new_min=$(date -d @$new_timestamp +%M)
+  local new_sec=$(date -d @$new_timestamp +%S)
+  # Call the set function with the new time
+  set_startup_time $new_date $new_hour $new_min $new_sec
+  local shut_str=$(get_shutdown_time)
+  local shut_ts=$(date -d "$shut_str" +%s)
+  local new_timestamp=$((shut_ts + diff))
+  # Convert the new timestamp back to the individual components
+  local new_date=$(date -d @$new_timestamp +%d)
+  local new_hour=$(date -d @$new_timestamp +%H)
+  local new_min=$(date -d @$new_timestamp +%M)
+  local new_sec=$(date -d @$new_timestamp +%S)
+  # Call the set function with the new time
+  set_shutdown_time $new_date $new_hour $new_min $new_sec
   i2c_write 0x01 $I2C_MC_ADDRESS 58 $(dec2bcd $sec)
   i2c_write 0x01 $I2C_MC_ADDRESS 59 $(dec2bcd $min)
   i2c_write 0x01 $I2C_MC_ADDRESS 60 $(dec2bcd $hour)
@@ -718,6 +773,7 @@ check_sys_and_rtc_time()
     local sys_t=$(date +'%Y-%m-%d %H:%M:%S %Z' -d @$sys_ts)
     echo "[Warning] System and RTC time seems not synchronized, difference is ${delta#-}s."
     echo "System time is \"$sys_t\", while RTC time is \"$rtc_t\"."
-    echo 'Please synchronize the time first.'
+    echo 'Syncronize using RTC time by default...'
+    rtc_to_system
   fi
 }

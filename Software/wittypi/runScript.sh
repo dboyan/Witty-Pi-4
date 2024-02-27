@@ -152,7 +152,7 @@ if [ -f $schedule_file ]; then
             else
               if [ ! -z "$2" ] && [ $interrupted == 0 ] ; then
                 # schedule a shutdown 1 minute before next startup
-                setup_on_state $((check_time-duration-60))
+                setup_on_state $check_time
               else
                 setup_on_state $check_time
               fi
@@ -165,7 +165,7 @@ if [ -f $schedule_file ]; then
                 # jump back to previous OFF state 
                 prev_state=${states[$((index-1))]}
                 prev_duration=$(extract_duration $prev_state)
-                setup_off_state $((check_time-duration-prev_duration))
+                setup_off_state $check_time
               else
                 setup_off_state $check_time
               fi
