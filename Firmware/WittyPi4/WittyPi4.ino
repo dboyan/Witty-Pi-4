@@ -30,8 +30,6 @@
 #define PIN_I_SDA                 2   // pin to SDA for internal I2C (ATtiny841 as master)
 #define PIN_I_SCL                 10  // pin to SCL for internal I2C (ATtiny841 as master)
 
-#define PIN_SENSOR                18  // pin to read the output from sound sensor
-
 #define ADDRESS_LM75B           0x48  // LM75B address in internal I2C bus
 #define ADDRESS_RTC             0x51  // PCF85063 address in internal I2C bus
 
@@ -207,8 +205,6 @@ void setup() {
   pinMode(PIN_VK, INPUT);
   pinMode(PIN_SDA, INPUT_PULLUP);
   pinMode(PIN_SCL, INPUT_PULLUP);
-  // set the pin for sensor as input
-  pinMode(PIN_SENSOR, INPUT);
   cutPower();
 
   // use internal 1.1V reference
@@ -253,11 +249,6 @@ void setup() {
 
 void loop() {
   // we don't put anything here
-  byte soundDetected = digitalRead(PIN_SENSOR);
-  if(soundDetected == 0)
-  {
-    turnOnIfPowerOff();
-  }
 }
 
 

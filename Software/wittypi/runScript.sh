@@ -24,6 +24,40 @@ done
 
 # get current timestamp
 cur_time=$(current_timestamp)
+cur_time=$(current_timestamp)
+cur_time=$(current_timestamp)
+# Check and adjust cur_time based on schedule_backup.txt
+if [ -f "$schedule_backup_file" ]; then
+  # Initialize variables to hold the times from the backup file
+  shutdown_time=""
+  startup_time=""
+
+  # Read the times from the file
+  while IFS= read -r line; do
+    if [[ $line == shutdown_time:* ]]; then
+      shutdown_time=$(echo "$line" | cut -d ' ' -f2-)
+    elif [[ $line == startup_time:* ]]; then
+      startup_time=$(echo "$line" | cut -d ' ' -f2-)
+    fi
+  done < "$schedule_backup_file"
+
+  # Convert the times to timestamps for comparison
+  if [[ -n $shutdown_time ]]; then
+    shutdown_timestamp=$(date -d "$shutdown_time" +%s)
+  fi
+  if [[ -n $startup_time ]]; then
+    startup_timestamp=$(date -d "$startup_time" +%s)
+  fi
+
+  # Adjust cur_time based on the conditions
+  if [[ -n $shutdown_timestamp && $cur_time -le $shutdown_timestamp ]]; then
+    # If cur_time is not after shutdown_time, set it to startup_time
+    if [[ -n $startup_timestamp && $startup_timestamp -gt $cur_time ]]; then
+      cur_time=$startup_timestamp
+    fi
+  fi
+fi
+
 echo "--------------- $(date -d @$cur_time +'%Y-%m-%d %H:%M:%S') ---------------"
 
 extract_timestamp()
@@ -61,6 +95,20 @@ extract_duration()
   echo $duration
 }
 
+schedule_backup_file="$cur_dir/schedule_backup.txt"
+
+update_schedule_backup() {
+  if [ ! -f "$schedule_backup_file" ]; then
+    echo "$1_time: $2 $3 $4 $5" > "$schedule_backup_file"
+  else
+    if grep -q "$1_time:" "$schedule_backup_file"; then
+      sed -i "/$1_time:/c\\$1_time: $2 $3 $4 $5" "$schedule_backup_file"
+    else
+      echo "$1_time: $2 $3 $4 $5" >> "$schedule_backup_file"
+    fi
+  fi
+}
+
 setup_off_state()
 {
   local res=$(check_sys_and_rtc_time)
@@ -72,6 +120,7 @@ setup_off_state()
   local hour=$(date -d "@$1" +"%H")
   local minute=$(date -d "@$1" +"%M")
   local second=$(date -d "@$1" +"%S")
+  update_schedule_backup "startup" $date $hour $minute $second
   set_startup_time $date $hour $minute $second
 }
 
@@ -86,6 +135,7 @@ setup_on_state()
   local hour=$(date -d "@$1" +"%H")
   local minute=$(date -d "@$1" +"%M")
   local second=$(date -d "@$1" +"%S")
+  update_schedule_backup "shutdown" $date $hour $minute $second
   set_shutdown_time $date $hour $minute $second
 }
 
