@@ -33,6 +33,8 @@
 #define ADDRESS_LM75B           0x48  // LM75B address in internal I2C bus
 #define ADDRESS_RTC             0x51  // PCF85063 address in internal I2C bus
 
+#define VIN_THRESHOLD 0.05 
+
 /*
  * I2C registers
  * 
@@ -649,6 +651,11 @@ ISR (WDT_vect) {
       updateRegister(I2C_ACTION_REASON, REASON_ALARM1_DELAYED);
       emulateButtonClick();
     }
+  }
+
+  float vin = getInputVoltage(); // Use existing function to get VIN
+  if (vin > VIN_THRESHOLD && !powerIsOn) {
+    emulateButtonClick(); // Use existing function to power on the Raspberry Pi
   }
 }
 
