@@ -548,7 +548,7 @@ i2c_write()
   local result=$(i2c_read $1 $2 $3)
   if [ "$result" != $(dec2hex "$4") ] ; then
     retry=$(( $retry + 1 ))
-    if [ $retry -eq 4 ] ; then
+    if [ $retry -eq 10 ] ; then
       log "I2C write $1 $2 $3 $4 failed (result=$result), and no more retry."
     else
       sleep 1
