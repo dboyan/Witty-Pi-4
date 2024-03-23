@@ -24,39 +24,34 @@ done
 
 # get current timestamp
 cur_time=$(current_timestamp)
+sleep 0.5
 cur_time=$(current_timestamp)
-cur_time=$(current_timestamp)
-# Check and adjust cur_time based on schedule_backup.txt
-if [ -f "$schedule_backup_file" ]; then
-  # Initialize variables to hold the times from the backup file
-  shutdown_time=""
-  startup_time=""
 
-  # Read the times from the file
-  while IFS= read -r line; do
-    if [[ $line == shutdown_time:* ]]; then
-      shutdown_time=$(echo "$line" | cut -d ' ' -f2-)
-    elif [[ $line == startup_time:* ]]; then
-      startup_time=$(echo "$line" | cut -d ' ' -f2-)
+startup_backup_file="$cur_dir/startup_backup.txt"
+shutdown_backup_file="$cur_dir/shutdown_backup.txt"
+
+# Function to update current timestamp with the one from startup_backup_file
+update_current_timestamp() {
+    cur_time=$(cat "$startup_backup_file")
+    log "Updated current timestamp with startup backup: $cur_time"
+}
+
+if [ -f "$shutdown_backup_file" ] && [ -f "$startup_backup_file" ] && [ -f $schedule_file ]; then
+    # File exists, compare timestamps
+    shutdown_backup_time=$(cat "$shutdown_backup_file")
+    retries=0
+    while (( cur_time < shutdown_backup_time )) && [ $retries -lt 10 ]; do
+        sleep 0.5
+        cur_time=$(current_timestamp)
+        ((retries++))
+    done
+    if (( cur_time < shutdown_backup_time )); then
+        # Current timestamp is not in the future, update current timestamp
+        update_current_timestamp
     fi
-  done < "$schedule_backup_file"
-
-  # Convert the times to timestamps for comparison
-  if [[ -n $shutdown_time ]]; then
-    shutdown_timestamp=$(date -d "$shutdown_time" +%s)
-  fi
-  if [[ -n $startup_time ]]; then
-    startup_timestamp=$(date -d "$startup_time" +%s)
-  fi
-
-  # Adjust cur_time based on the conditions
-  if [[ -n $shutdown_timestamp && $cur_time -le $shutdown_timestamp ]]; then
-    # If cur_time is not after shutdown_time, set it to startup_time
-    if [[ -n $startup_timestamp && $startup_timestamp -gt $cur_time ]]; then
-      cur_time=$startup_timestamp
-    fi
-  fi
 fi
+
+log "Curtime is:  $(date -d @$cur_time +'%Y-%m-%d %H:%M:%S')"
 
 echo "--------------- $(date -d @$cur_time +'%Y-%m-%d %H:%M:%S') ---------------"
 
@@ -95,20 +90,6 @@ extract_duration()
   echo $duration
 }
 
-schedule_backup_file="$cur_dir/schedule_backup.txt"
-
-update_schedule_backup() {
-  if [ ! -f "$schedule_backup_file" ]; then
-    echo "$1_time: $2 $3 $4 $5" > "$schedule_backup_file"
-  else
-    if grep -q "$1_time:" "$schedule_backup_file"; then
-      sed -i "/$1_time:/c\\$1_time: $2 $3 $4 $5" "$schedule_backup_file"
-    else
-      echo "$1_time: $2 $3 $4 $5" >> "$schedule_backup_file"
-    fi
-  fi
-}
-
 setup_off_state()
 {
   local res=$(check_sys_and_rtc_time)
@@ -120,7 +101,6 @@ setup_off_state()
   local hour=$(date -d "@$1" +"%H")
   local minute=$(date -d "@$1" +"%M")
   local second=$(date -d "@$1" +"%S")
-  update_schedule_backup "startup" $date $hour $minute $second
   set_startup_time $date $hour $minute $second
 }
 
@@ -135,7 +115,6 @@ setup_on_state()
   local hour=$(date -d "@$1" +"%H")
   local minute=$(date -d "@$1" +"%M")
   local second=$(date -d "@$1" +"%S")
-  update_schedule_backup "shutdown" $date $hour $minute $second
   set_shutdown_time $date $hour $minute $second
 }
 
@@ -203,8 +182,12 @@ if [ -f $schedule_file ]; then
               if [ ! -z "$2" ] && [ $interrupted == 0 ] ; then
                 # schedule a shutdown 1 minute before next startup
                 setup_on_state $check_time
+                echo "$check_time" > "$shutdown_backup_file"
+                log "Updated shutdown backup file with: $check_time"
               else
                 setup_on_state $check_time
+                echo "$check_time" > "$shutdown_backup_file"
+                log "Updated shutdown backup file with: $check_time"
               fi
             fi
           elif [[ ${states[$index]} == OFF* ]] ; then
@@ -216,8 +199,12 @@ if [ -f $schedule_file ]; then
                 prev_state=${states[$((index-1))]}
                 prev_duration=$(extract_duration $prev_state)
                 setup_off_state $check_time
+                echo "$check_time" > "$startup_backup_file"
+                log "Updated startup backup file with: $check_time"
               else
                 setup_off_state $check_time
+                echo "$check_time" > "$startup_backup_file"
+                log "Updated startup backup file with: $check_time"
               fi
             fi
           else
